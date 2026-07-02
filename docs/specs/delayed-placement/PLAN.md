@@ -18,6 +18,7 @@
 Implementation note:
 - `ITEM_AFTER_BLOCK` is used instead of `RightClickBlock` so normal block interaction routing remains intact and only actual item placement is delayed.
 - A `BlockEvent.EntityPlaceEvent` fallback is not used in the first slice because the primary hook compiled and covered the targeted `BlockItem` placement path cleanly.
+- This means the MVP behaves as "click once, then keep aiming" rather than true continuous hold detection.
 
 ## PendingPlacement Data Model
 
@@ -85,3 +86,4 @@ If any check fails, cancel the pending placement and log the reason when debug l
 - Tag blacklist validation requires reliable tag lookup against the target block and current registry/tag API.
 - Offhand interactions can be sensitive when mainhand items also react to the same click.
 - Client animation may still play even when server placement is delayed; this is acceptable for the MVP if the server state remains correct.
+- True "must hold right click" semantics are not implemented in this slice and likely require client-side input awareness or networking.

@@ -22,7 +22,7 @@ public final class BlockDelayConfig {
 
     public static final ModConfigSpec.BooleanValue ENABLE_DEBUG_LOGGING = BUILDER
             .comment("Enable debug logging for delayed placement attempts, progress, cancellations, and completions.")
-            .define("enableDebugLogging", true);
+            .define("enableDebugLogging", false);
 
     public static final ModConfigSpec.BooleanValue SHOW_PARTICLES = BUILDER
             .comment("If true, the server emits simple particles while a placement is pending.")

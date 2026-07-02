@@ -23,13 +23,19 @@ Instant block placement lets survival players rapidly box themselves in during c
 
 ## MVP Scope
 
-When a survival player attempts to place a block with either hand:
+When a survival player right-clicks a block with a `BlockItem` in either hand:
 
 1. Immediate placement is prevented.
 2. A pending placement entry is stored on the server.
-3. The player must continue aiming at the same placement target for a configurable delay.
+3. The player must remain valid and continue aiming at the same clicked block face for a configurable delay.
 4. When the delay completes, the mod retries placement through the item's normal placement path.
 5. If validation fails before completion, the pending placement is cancelled with no item consumption.
+
+Important MVP limitation:
+
+- This slice does not truly detect continuous right-click holding.
+- Current behavior is: a placement attempt starts from a right-click, then completes later only if the player keeps aiming at the same clicked block/face and remains valid.
+- True "must hold right click" behavior is a future improvement and would likely need client-side input tracking, networking, or another more advanced approach.
 
 ## Functional Requirements
 
@@ -70,7 +76,7 @@ When a survival player attempts to place a block with either hand:
 
 ## Acceptance Tests
 
-1. In survival, placing stone waits the configured delay before the block appears.
+1. In survival, right-clicking with stone starts a delayed placement and the block appears only after the configured delay if the player keeps aiming at the same target.
 2. In creative, placing stone remains instant.
 3. Delay applies to a block in `MAIN_HAND`.
 4. Delay applies to a block in `OFF_HAND`.

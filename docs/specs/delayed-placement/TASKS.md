@@ -12,3 +12,4 @@
 10. Add debug logging at attempt, progress, cancel, bypass, and complete points.
 11. Add optional basic particle hook only if low-risk after the core flow compiles.
 12. Build with Gradle, fix compile errors, and run a manual test checklist.
+13. Keep spec wording aligned with the current MVP semantics: right-click starts a pending placement, then the player must keep aiming; true hold detection is deferred.
