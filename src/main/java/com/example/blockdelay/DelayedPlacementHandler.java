@@ -115,6 +115,19 @@ final class DelayedPlacementHandler {
             return;
         }
 
+        if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean()) {
+            if (!isUseHeldValid(player)) {
+                long ageTicks = player.level().getGameTime() - pendingPlacement.createdGameTime();
+                if (ageTicks <= BlockDelayConfig.HOLD_INPUT_GRACE_TICKS.getAsInt()) {
+                    showHoldActionBar(player);
+                    return;
+                }
+
+                cancelPending(player, pendingPlacement, "use key is no longer held");
+                return;
+            }
+        }
+
         int ticksElapsed = pendingPlacement.advance();
         updateActionBar(player, pendingPlacement);
         if (BlockDelayConfig.SHOW_PARTICLES.getAsBoolean() && player.level() instanceof ServerLevel serverLevel && ticksElapsed % 4 == 0) {
@@ -158,6 +171,7 @@ final class DelayedPlacementHandler {
 
     static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         PendingPlacement removed = PendingPlacementManager.remove(event.getEntity().getUUID());
+        PendingPlacementManager.clearUseHeld(event.getEntity().getUUID());
         if (removed != null) {
             if (event.getEntity() instanceof ServerPlayer serverPlayer) {
                 clearActionBar(serverPlayer);
@@ -170,7 +184,7 @@ final class DelayedPlacementHandler {
         PendingPlacementManager.updateUseHeld(player.getUUID(), held, player.level().getGameTime());
         debug("Updated held-input state: player={}, held={}", player.getGameProfile().getName(), held);
 
-        if (!held) {
+        if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean() && !held) {
             PendingPlacement pendingPlacement = PendingPlacementManager.get(player.getUUID());
             if (pendingPlacement != null) {
                 cancelPending(player, pendingPlacement, "use key released");
@@ -254,14 +268,6 @@ final class DelayedPlacementHandler {
         if (isBlacklisted(currentBlock, currentBlockId)) {
             return "block became blacklisted";
         }
-
-        if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean()) {
-            long ageTicks = player.level().getGameTime() - pendingPlacement.createdGameTime();
-            if (ageTicks > BlockDelayConfig.HOLD_INPUT_GRACE_TICKS.getAsInt() && !isUseHeldValid(player)) {
-                return "use key is no longer held";
-            }
-        }
-
         return null;
     }
 
@@ -321,6 +327,12 @@ final class DelayedPlacementHandler {
         String empty = ".".repeat(progressBarLength - filledSegments);
         int percent = Math.max(0, Math.min(100, (int) Math.floor((elapsedTicks / (double) requiredTicks) * 100.0D)));
         player.displayClientMessage(Component.literal("Placing [" + filled + empty + "] " + percent + "%"), true);
+    }
+
+    private static void showHoldActionBar(ServerPlayer player) {
+        if (BlockDelayConfig.SHOW_PROGRESS_ACTION_BAR.getAsBoolean()) {
+            player.displayClientMessage(Component.literal("Hold use to place"), true);
+        }
     }
 
     private static void clearActionBar(ServerPlayer player) {
