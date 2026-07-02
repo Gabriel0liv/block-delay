@@ -1,12 +1,12 @@
 package com.example.blockdelay;
 
 import java.util.List;
-import java.util.Locale;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,6 +26,8 @@ import net.neoforged.neoforge.event.entity.player.UseItemOnBlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 final class DelayedPlacementHandler {
+    private static final int HELD_HEARTBEAT_TIMEOUT_TICKS = 10;
+
     private DelayedPlacementHandler() {
     }
 
@@ -79,7 +81,8 @@ final class DelayedPlacementHandler {
                 stack.copy(),
                 blockId,
                 BlockDelayConfig.PLACEMENT_DELAY_TICKS.getAsInt(),
-                BlockDelayConfig.MAX_DISTANCE_FROM_TARGET.get());
+                BlockDelayConfig.MAX_DISTANCE_FROM_TARGET.get(),
+                player.level().getGameTime());
 
         PendingPlacement replaced = PendingPlacementManager.put(pendingPlacement);
         if (replaced != null) {
@@ -113,6 +116,7 @@ final class DelayedPlacementHandler {
         }
 
         int ticksElapsed = pendingPlacement.advance();
+        updateActionBar(player, pendingPlacement);
         if (BlockDelayConfig.SHOW_PARTICLES.getAsBoolean() && player.level() instanceof ServerLevel serverLevel && ticksElapsed % 4 == 0) {
             Vec3 hitLocation = pendingPlacement.hitLocation();
             serverLevel.sendParticles(
@@ -143,7 +147,11 @@ final class DelayedPlacementHandler {
 
     static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         PendingPlacement removed = PendingPlacementManager.remove(event.getEntity().getUUID());
+        PendingPlacementManager.clearUseHeld(event.getEntity().getUUID());
         if (removed != null) {
+            if (event.getEntity() instanceof ServerPlayer serverPlayer) {
+                clearActionBar(serverPlayer);
+            }
             debug("Cancelled pending placement on logout for {}", event.getEntity().getGameProfile().getName());
         }
     }
@@ -151,7 +159,22 @@ final class DelayedPlacementHandler {
     static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         PendingPlacement removed = PendingPlacementManager.remove(event.getEntity().getUUID());
         if (removed != null) {
+            if (event.getEntity() instanceof ServerPlayer serverPlayer) {
+                clearActionBar(serverPlayer);
+            }
             debug("Cancelled pending placement on dimension change for {}", event.getEntity().getGameProfile().getName());
+        }
+    }
+
+    static void onUseKeyHeldUpdate(ServerPlayer player, boolean held) {
+        PendingPlacementManager.updateUseHeld(player.getUUID(), held, player.level().getGameTime());
+        debug("Updated held-input state: player={}, held={}", player.getGameProfile().getName(), held);
+
+        if (!held) {
+            PendingPlacement pendingPlacement = PendingPlacementManager.get(player.getUUID());
+            if (pendingPlacement != null) {
+                cancelPending(player, pendingPlacement, "use key released");
+            }
         }
     }
 
@@ -232,6 +255,13 @@ final class DelayedPlacementHandler {
             return "block became blacklisted";
         }
 
+        if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean()) {
+            long ageTicks = player.level().getGameTime() - pendingPlacement.createdGameTime();
+            if (ageTicks > BlockDelayConfig.HOLD_INPUT_GRACE_TICKS.getAsInt() && !isUseHeldValid(player)) {
+                return "use key is no longer held";
+            }
+        }
+
         return null;
     }
 
@@ -248,6 +278,7 @@ final class DelayedPlacementHandler {
         }
 
         PendingPlacementManager.remove(player.getUUID());
+        clearActionBar(player);
         debug(
                 "Final placement attempt: player={}, block={}, result={}, remainingStack={}",
                 player.getGameProfile().getName(),
@@ -258,11 +289,44 @@ final class DelayedPlacementHandler {
 
     private static void cancelPending(ServerPlayer player, PendingPlacement pendingPlacement, String reason) {
         PendingPlacementManager.remove(player.getUUID());
+        clearActionBar(player);
         debug(
                 "Cancelled pending placement: player={}, block={}, reason={}",
                 player.getGameProfile().getName(),
                 pendingPlacement.blockId(),
                 reason);
+    }
+
+    private static boolean isUseHeldValid(ServerPlayer player) {
+        PendingPlacementManager.HeldInputState heldInputState = PendingPlacementManager.getUseHeldState(player.getUUID());
+        if (heldInputState == null || !heldInputState.held()) {
+            return false;
+        }
+
+        long ageTicks = player.level().getGameTime() - heldInputState.lastUpdateGameTime();
+        return ageTicks <= HELD_HEARTBEAT_TIMEOUT_TICKS;
+    }
+
+    private static void updateActionBar(ServerPlayer player, PendingPlacement pendingPlacement) {
+        if (!BlockDelayConfig.SHOW_PROGRESS_ACTION_BAR.getAsBoolean()) {
+            return;
+        }
+
+        int requiredTicks = pendingPlacement.requiredTicks();
+        int elapsedTicks = pendingPlacement.ticksElapsed();
+        int progressBarLength = BlockDelayConfig.PROGRESS_BAR_LENGTH.getAsInt();
+        int filledSegments = Math.max(0, Math.min(progressBarLength, (int) Math.floor((elapsedTicks / (double) requiredTicks) * progressBarLength)));
+
+        String filled = "|".repeat(filledSegments);
+        String empty = ".".repeat(progressBarLength - filledSegments);
+        int percent = Math.max(0, Math.min(100, (int) Math.floor((elapsedTicks / (double) requiredTicks) * 100.0D)));
+        player.displayClientMessage(Component.literal("Placing [" + filled + empty + "] " + percent + "%"), true);
+    }
+
+    private static void clearActionBar(ServerPlayer player) {
+        if (BlockDelayConfig.SHOW_PROGRESS_ACTION_BAR.getAsBoolean() && BlockDelayConfig.CLEAR_ACTION_BAR_ON_CANCEL.getAsBoolean()) {
+            player.displayClientMessage(Component.empty(), true);
+        }
     }
 
     private static void debug(String message, Object... args) {

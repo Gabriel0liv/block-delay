@@ -24,6 +24,7 @@ final class PendingPlacement {
     private final ResourceLocation blockId;
     private final int requiredTicks;
     private final double maxDistance;
+    private final long createdGameTime;
     private int ticksElapsed;
 
     PendingPlacement(
@@ -37,7 +38,8 @@ final class PendingPlacement {
             ItemStack stackSnapshot,
             ResourceLocation blockId,
             int requiredTicks,
-            double maxDistance) {
+            double maxDistance,
+            long createdGameTime) {
         this.playerId = playerId;
         this.dimension = dimension;
         this.clickedPos = clickedPos.immutable();
@@ -49,6 +51,7 @@ final class PendingPlacement {
         this.blockId = blockId;
         this.requiredTicks = requiredTicks;
         this.maxDistance = maxDistance;
+        this.createdGameTime = createdGameTime;
     }
 
     UUID playerId() {
@@ -93,6 +96,10 @@ final class PendingPlacement {
 
     double maxDistance() {
         return maxDistance;
+    }
+
+    long createdGameTime() {
+        return createdGameTime;
     }
 
     int ticksElapsed() {

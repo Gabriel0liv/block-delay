@@ -1,15 +1,12 @@
-# Delayed Placement MVP Tasks
+# Delayed Placement Held-Input Tasks
 
-1. Add common config values for delay, survival-only mode, max distance, debug flag, particles flag, and blacklists.
-2. Replace template mod metadata and generated example content with real delayed-placement mod metadata.
-3. Add `PendingPlacement` model.
-4. Add `PendingPlacementManager` keyed by player UUID.
-5. Add a server-side placement-attempt event handler for `BlockItem` use on blocks.
-6. Add server tick progression for pending placements.
-7. Add validation and cancellation reasons for item, hand, target, distance, dimension, survival state, and death.
-8. Add blacklist checks for block id, namespace, and block tag id.
-9. Add bypass mechanism so final placement does not cancel itself.
-10. Add debug logging at attempt, progress, cancel, bypass, and complete points.
-11. Add optional basic particle hook only if low-risk after the core flow compiles.
-12. Build with Gradle, fix compile errors, and run a manual test checklist.
-13. Keep spec wording aligned with the current MVP semantics: right-click starts a pending placement, then the player must keep aiming; true hold detection is deferred.
+1. Add networking setup.
+2. Add client-side keybind/use-key tracking.
+3. Add packet/payload for held-state updates.
+4. Track held-state server-side by player UUID.
+5. Modify pending placement progression to advance only while held-state is true.
+6. Cancel pending placement when held-state becomes false.
+7. Add action bar progress feedback.
+8. Add config for progress display and held-input behavior.
+9. Build with Gradle and fix compile errors.
+10. Add and verify the manual test checklist for held input, rebinding, action bar progress, and dedicated server safety.

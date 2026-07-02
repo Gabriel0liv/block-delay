@@ -28,6 +28,26 @@ public final class BlockDelayConfig {
             .comment("If true, the server emits simple particles while a placement is pending.")
             .define("showParticles", false);
 
+    public static final ModConfigSpec.BooleanValue REQUIRE_USE_KEY_HELD = BUILDER
+            .comment("If true, pending placement only progresses while the client reports that the configured use/place key is held.")
+            .define("requireUseKeyHeld", true);
+
+    public static final ModConfigSpec.IntValue HOLD_INPUT_GRACE_TICKS = BUILDER
+            .comment("How many ticks a pending placement may wait for the initial held-input packet before it is treated as released.")
+            .defineInRange("holdInputGraceTicks", 3, 0, 20 * 10);
+
+    public static final ModConfigSpec.BooleanValue SHOW_PROGRESS_ACTION_BAR = BUILDER
+            .comment("If true, show delayed placement progress in the action bar.")
+            .define("showProgressActionBar", true);
+
+    public static final ModConfigSpec.IntValue PROGRESS_BAR_LENGTH = BUILDER
+            .comment("How many segments to render in the action bar progress bar.")
+            .defineInRange("progressBarLength", 20, 5, 60);
+
+    public static final ModConfigSpec.BooleanValue CLEAR_ACTION_BAR_ON_CANCEL = BUILDER
+            .comment("If true, clear the action bar when pending placement is cancelled or completes.")
+            .define("clearActionBarOnCancel", true);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> BLACKLISTED_BLOCKS = BUILDER
             .comment("Block ids that bypass the placement delay, for example minecraft:torch.")
             .defineListAllowEmpty("blacklistedBlocks", List.of(), () -> "", BlockDelayConfig::isResourceLocation);
