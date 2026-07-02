@@ -14,6 +14,7 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
@@ -32,11 +33,34 @@ final class DelayedPlacementHandler {
     }
 
     static void onUseItemOnBlock(UseItemOnBlockEvent event) {
-        if (event.getSide().isClient()) {
+        if (event.getUsePhase() != UseItemOnBlockEvent.UsePhase.ITEM_AFTER_BLOCK) {
             return;
         }
 
-        if (event.getUsePhase() != UseItemOnBlockEvent.UsePhase.ITEM_AFTER_BLOCK) {
+        Player eventPlayer = event.getPlayer();
+        if (eventPlayer == null) {
+            return;
+        }
+
+        ItemStack stack = event.getItemStack();
+        if (!(stack.getItem() instanceof BlockItem blockItem)) {
+            return;
+        }
+
+        ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(blockItem.getBlock());
+        if (isBlacklisted(blockItem.getBlock(), blockId)) {
+            if (!event.getSide().isClient()) {
+                debug("Skipping delay for blacklisted block {} used by {}", blockId, eventPlayer.getGameProfile().getName());
+            }
+            return;
+        }
+
+        if (event.getSide().isClient()) {
+            if (!shouldDelayClient(eventPlayer)) {
+                return;
+            }
+
+            event.cancelWithResult(ItemInteractionResult.SUCCESS);
             return;
         }
 
@@ -49,18 +73,13 @@ final class DelayedPlacementHandler {
             return;
         }
 
-        ItemStack stack = event.getItemStack();
-        if (!(stack.getItem() instanceof BlockItem blockItem)) {
-            return;
-        }
-
         if (!shouldDelay(player)) {
             return;
         }
 
-        ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(blockItem.getBlock());
-        if (isBlacklisted(blockItem.getBlock(), blockId)) {
-            debug("Skipping delay for blacklisted block {} used by {}", blockId, player.getGameProfile().getName());
+        if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean() && PendingPlacementManager.isReleaseRequired(player.getUUID())) {
+            showReleaseActionBar(player);
+            event.cancelWithResult(ItemInteractionResult.SUCCESS);
             return;
         }
 
@@ -70,6 +89,16 @@ final class DelayedPlacementHandler {
                 context.getClickedFace(),
                 context.getClickedPos(),
                 context.isInside());
+        PendingPlacement existing = PendingPlacementManager.get(player.getUUID());
+        if (existing != null) {
+            if (existing.matchesAttempt(event.getHand(), blockId, hitResult, stack)) {
+                event.cancelWithResult(ItemInteractionResult.SUCCESS);
+                return;
+            }
+
+            cancelPending(player, existing, "new placement attempt");
+        }
+
         PendingPlacement pendingPlacement = new PendingPlacement(
                 player.getUUID(),
                 player.level().dimension(),
@@ -84,10 +113,7 @@ final class DelayedPlacementHandler {
                 BlockDelayConfig.MAX_DISTANCE_FROM_TARGET.get(),
                 player.level().getGameTime());
 
-        PendingPlacement replaced = PendingPlacementManager.put(pendingPlacement);
-        if (replaced != null) {
-            debug("Replaced pending placement for {}", player.getGameProfile().getName());
-        }
+        PendingPlacementManager.put(pendingPlacement);
 
         debug(
                 "Queued delayed placement: player={}, block={}, hand={}, pos={}, delayTicks={}",
@@ -161,6 +187,7 @@ final class DelayedPlacementHandler {
     static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         PendingPlacement removed = PendingPlacementManager.remove(event.getEntity().getUUID());
         PendingPlacementManager.clearUseHeld(event.getEntity().getUUID());
+        PendingPlacementManager.clearReleaseRequired(event.getEntity().getUUID());
         if (removed != null) {
             if (event.getEntity() instanceof ServerPlayer serverPlayer) {
                 clearActionBar(serverPlayer);
@@ -172,6 +199,7 @@ final class DelayedPlacementHandler {
     static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         PendingPlacement removed = PendingPlacementManager.remove(event.getEntity().getUUID());
         PendingPlacementManager.clearUseHeld(event.getEntity().getUUID());
+        PendingPlacementManager.clearReleaseRequired(event.getEntity().getUUID());
         if (removed != null) {
             if (event.getEntity() instanceof ServerPlayer serverPlayer) {
                 clearActionBar(serverPlayer);
@@ -183,6 +211,10 @@ final class DelayedPlacementHandler {
     static void onUseKeyHeldUpdate(ServerPlayer player, boolean held) {
         PendingPlacementManager.updateUseHeld(player.getUUID(), held, player.level().getGameTime());
         debug("Updated held-input state: player={}, held={}", player.getGameProfile().getName(), held);
+
+        if (!held) {
+            PendingPlacementManager.clearReleaseRequired(player.getUUID());
+        }
 
         if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean() && !held) {
             PendingPlacement pendingPlacement = PendingPlacementManager.get(player.getUUID());
@@ -198,6 +230,14 @@ final class DelayedPlacementHandler {
         }
 
         return player.gameMode.isSurvival();
+    }
+
+    private static boolean shouldDelayClient(Player player) {
+        if (!BlockDelayConfig.ONLY_SURVIVAL.getAsBoolean()) {
+            return true;
+        }
+
+        return !player.getAbilities().instabuild && !player.isSpectator();
     }
 
     private static boolean isBlacklisted(Block block, ResourceLocation blockId) {
@@ -285,6 +325,9 @@ final class DelayedPlacementHandler {
 
         PendingPlacementManager.remove(player.getUUID());
         clearActionBar(player);
+        if (BlockDelayConfig.REQUIRE_USE_KEY_HELD.getAsBoolean()) {
+            PendingPlacementManager.requireRelease(player.getUUID());
+        }
         debug(
                 "Final placement attempt: player={}, block={}, result={}, remainingStack={}",
                 player.getGameProfile().getName(),
@@ -332,6 +375,12 @@ final class DelayedPlacementHandler {
     private static void showHoldActionBar(ServerPlayer player) {
         if (BlockDelayConfig.SHOW_PROGRESS_ACTION_BAR.getAsBoolean()) {
             player.displayClientMessage(Component.literal("Hold use to place"), true);
+        }
+    }
+
+    private static void showReleaseActionBar(ServerPlayer player) {
+        if (BlockDelayConfig.SHOW_PROGRESS_ACTION_BAR.getAsBoolean()) {
+            player.displayClientMessage(Component.literal("Release use to place again"), true);
         }
     }
 

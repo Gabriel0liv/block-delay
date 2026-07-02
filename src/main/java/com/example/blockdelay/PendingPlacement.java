@@ -111,6 +111,14 @@ final class PendingPlacement {
         return this.ticksElapsed;
     }
 
+    boolean matchesAttempt(InteractionHand hand, ResourceLocation blockId, BlockHitResult hitResult, ItemStack currentStack) {
+        return this.hand == hand
+                && this.blockId.equals(blockId)
+                && this.clickedPos.equals(hitResult.getBlockPos())
+                && this.clickedFace == hitResult.getDirection()
+                && ItemStack.isSameItemSameComponents(currentStack, this.stackSnapshot);
+    }
+
     boolean isReady() {
         return this.ticksElapsed >= this.requiredTicks;
     }
